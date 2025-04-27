@@ -17,9 +17,9 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(m
 logger = logging.getLogger(__name__)
 
 # Hardcoded bot token (replace with new token from @BotFather)
-BOT_TOKEN = "NEW_BOT_TOKEN"
+BOT_TOKEN = "7977504618:AAHo-N5eUPKOGlklZUomqlhJ4-op3t68GSE"
 # Placeholder group ID
-GROUP_ID = "-1001234567890"  # Same as old bot
+GROUP_ID = "-1002522049841"  # Same as old bot
 # Admin chat ID
 ADMIN_CHAT_ID = "6972264549"  # Your Telegram chat ID
 
