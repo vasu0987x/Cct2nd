@@ -1,1 +1,1 @@
-web: python telegram_cctv_hacker_bot.py
+web: python bot.py
