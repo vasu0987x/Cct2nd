@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 IP, PORT = range(2)
 
 # Main admin ID (replace with @Imvasupareek's actual user ID)
-MAIN_ADMIN_ID = 123456789  # Get your ID from @userinfobot
+MAIN_ADMIN_ID = 6972264549  # Get your ID from @userinfobot
 
 # Common CCTV credentials
 CREDENTIALS = [
