@@ -215,7 +215,7 @@ async def hack_cctv(ip: str, port: int) -> tuple[str, list, list]:
                 potential_links.append((rtsp_url, username, password))
             else:
                 rtsp_results.append(f"❌ RTSP Failed: {username}:{password}")
-        no_creds_url culminating in a no_creds_url = f"rtsp://{ip}:{port}/live"
+        no_creds_url = f"rtsp://{ip}:{port}/live"
         is_valid, _ = await validate_rtsp(ip, port, "", "")
         if is_valid:
             rtsp_results.append(f"✅ RTSP Success: No credentials (try {no_creds_url})")
