@@ -219,8 +219,10 @@ def keep_alive():
 
 async def main():
     """Main function to run the bot."""
+    # Create the Application
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # Add handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("hack", hack_cctv))
     app.add_handler(CallbackQueryHandler(hunt_password, pattern="^hunt:"))
@@ -230,12 +232,25 @@ async def main():
     # Start keep-alive server in a separate thread
     threading.Thread(target=keep_alive, daemon=True).start()
     
-    # Initialize and run polling
-    await app.initialize()
+    # Run the bot using the existing event loop
+    loop = asyncio.get_event_loop()
     try:
-        await app.run_polling()
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        # Keep the loop running
+        while True:
+            await asyncio.sleep(3600)  # Sleep to prevent tight loop
+    except Exception as e:
+        logger.error(f"Error in main loop: {e}")
     finally:
+        await app.updater.stop()
+        await app.stop()
         await app.shutdown()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main())
+    finally:
+        loop.close()
