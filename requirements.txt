@@ -2,3 +2,4 @@ python-telegram-bot==20.7
 requests==2.32.3
 aiohttp==3.9.5
 rtsp==1.1.12
+beautifulsoup4==4.12.3
