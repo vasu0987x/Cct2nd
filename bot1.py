@@ -772,7 +772,7 @@ async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     context.user_data["brute_force_running"] = False
 
-async stop_brute_force(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def stop_brute_force(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -937,7 +937,7 @@ async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[
                     return False, url, [f"Error: {str(e)}"]
 
         if service == "http" and scan_type in ["standard", "special"]:
-            protocols = ["http", "https"] if	port in [443, 8443] else ["http"]
+            protocols = ["http", "https"] if port in [443, 8443] else ["http"]
             tasks = [check_path(protocol, path) for protocol in protocols for path in ADMIN_PATHS]
             responses = await asyncio.gather(*tasks, return_exceptions=True)
             for response in responses:
@@ -992,16 +992,6 @@ async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[
         results.append(f"❌ Scan error: {str(e)}")
 
     return "\n".join(results), potential_links, admin_pages
-
-async def stop_brute_force(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized_user(update, context):
-        await update.callback_query.message.reply_text("Contact admin to access the bot.")
-        await update.callback_query.answer()
-        return
-    query = update.callback_query
-    await query.answer()
-    context.user_data["brute_force_running"] = False
-    await query.message.reply_text("🛑 Brute-force stopped.", reply_markup=main_menu_markup())
 
 async def check_port(ip: str, port: int) -> bool:
     try:
