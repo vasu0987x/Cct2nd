@@ -355,8 +355,8 @@ async def hack_cctv(ip: str, port: int) -> tuple[str, list, list]:
                                 results.append(f"✅ **Detected Admin/Login Page** 🎯: {url} ({', '.join(details)})")
                             else:
                                 results.append(f"✅ Open Path: {url} (No admin/login page)")
-                        except Exception as e:
-                            results.append(f"❌ Path {url} (error: {str(e)})")
+            except Exception as e:
+                results.append(f"❌ Path {url} (error: {str(e)})")
             except Exception as e:
                 results.append(f"❌ Error checking {protocol} paths: {str(e)}")
         results.append(f"Open Paths Found: {len(open_paths)}/{len(ADMIN_PATHS)}")
