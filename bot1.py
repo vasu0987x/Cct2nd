@@ -276,7 +276,7 @@ async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("Enter a URL to check for admin panel (e.g., http://86.103.65.158:8443/login):")
+    await query.message.reply_text("Enter a URL or IP to check for admin panel (e.g., http://86.103.65.158:8443/login or 192.168.1.1:80/login):")
     context.user_data["awaiting_checklink"] = True
 
 async def status_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -336,7 +336,7 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     if not (context.user_data.get("awaiting_checklink", False) or (context.args and len(context.args) > 0)):
         await update.message.reply_text(
-            "Enter a URL to check for admin panel (e.g., http://86.103.65.158:8443/login):",
+            "Enter a URL or IP to check for admin panel (e.g., http://86.103.65.158:8443/login or 192.168.1.1:80/login):",
             reply_markup=main_menu_markup()
         )
         return
@@ -345,54 +345,22 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     context.user_data["awaiting_checklink"] = False
     logger.debug(f"Check Link input: {input_text}")
 
+    # Normalize input: Add http:// if no scheme, handle direct IP
     if not input_text.startswith(("http://", "https://")):
-        await update.message.reply_text(
-            "Invalid input! Enter a URL starting with http:// or https:// (e.g., http://86.103.65.158:8443/login).",
-            reply_markup=main_menu_markup()
-        )
-        return
+        input_text = f"http://{input_text}"
 
     parsed_url = urlparse(input_text)
     logger.debug(f"Parsed URL: scheme={parsed_url.scheme}, netloc={parsed_url.netloc}, hostname={parsed_url.hostname}, port={parsed_url.port}, path={parsed_url.path}")
 
-    if not parsed_url.hostname:
-        netloc = parsed_url.netloc.split(":")[0]
-        if is_valid_ipv4(netloc):
-            ip = netloc
-        else:
-            await update.message.reply_text(
-                "Invalid URL: No valid IP found!",
-                reply_markup=main_menu_markup()
-            )
-            return
-    else:
-        ip = parsed_url.hostname
-
-    if not is_valid_ipv4(ip):
-        logger.debug(f"Invalid IP: {ip}")
-        await update.message.reply_text(
-            "Invalid IP in URL! Use a valid IPv4 (e.g., 86.103.65.158).",
-            reply_markup=main_menu_markup()
-        )
-        return
-
+    # Extract IP and port
+    ip = parsed_url.hostname or parsed_url.netloc.split(":")[0]
     port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
     path = parsed_url.path or "/"
-    protocol = parsed_url.scheme
+    protocol = parsed_url.scheme or "http"
     url = f"{protocol}://{ip}:{port}{path}"
     logger.debug(f"Constructed URL: {url}")
 
     try:
-        if not await check_port(ip, port):
-            await update.message.reply_text(
-                f"❌ Port {port} is closed on {ip}. Try another port:",
-                reply_markup=main_menu_markup()
-            )
-            return
-
-        geo = await get_geo(ip, context)
-        geo_text = f"🌍 Location: {geo}\n" if geo != "Unknown" else ""
-
         is_admin, details = await check_admin_panel(url)
         panel_name = path.strip("/") or "root"
 
@@ -407,14 +375,14 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(
-                f"{geo_text}✅ **Admin Panel Found**: {panel_name} 🎯\nURL: {url}\nDetails: {', '.join(details)}",
+                f"✅ **Admin Panel Found**: {panel_name} 🎯\nURL: {url}\nDetails: {', '.join(details)}",
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
             try:
                 await context.bot.send_message(
                     chat_id=GROUP_CHAT_ID,
-                    text=f"{geo_text}✅ **Admin Panel** for {ip}:{port}!\nURL: {url}\nDetails: {', '.join(details)}",
+                    text=f"✅ **Admin Panel** for {ip}:{port}!\nURL: {url}\nDetails: {', '.join(details)}",
                     parse_mode="Markdown"
                 )
                 await asyncio.sleep(0.1)
@@ -427,7 +395,7 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(
-                f"{geo_text}❌ No admin panel found at {url}.\nDetails: {', '.join(details)}",
+                f"❌ No admin panel found at {url}.\nDetails: {', '.join(details)}",
                 reply_markup=reply_markup
             )
 
