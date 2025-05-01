@@ -287,7 +287,6 @@ async def hack_cctv(ip: str, port: int, scan_type: str) -> tuple[str, list]:
         return "\n".join(results), admin_pages
 
     results.append(f"✅ Port {port} open!")
- моей
     service = "http" if port in [80, 443, 8080, 8443] else "rtsp"
     results.append(f"Service: {service}")
 
