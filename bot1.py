@@ -118,8 +118,9 @@ async def start_hack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     logger.debug(f"Received callback: start_hack, query: {query.data}")
     await query.answer()
-    await query.message.reply_text("📡 Enter IP address (e.g., 192.168.1.1):")
+    context.user_data.clear()  # Reset state
     context.user_data["scan_type"] = "standard"
+    await query.message.reply_text("📡 Enter IP address (e.g., 192.168.1.1):")
     return IP
 
 async def special_scan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -127,8 +128,9 @@ async def special_scan_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     logger.debug(f"Received callback: special_scan, query: {query.data}")
     await query.answer()
-    await query.message.reply_text("📡 Enter IP for deep path scan (150+ paths):")
+    context.user_data.clear()  # Reset state
     context.user_data["scan_type"] = "special"
+    await query.message.reply_text("📡 Enter IP for deep path scan (150+ paths):")
     return IP
 
 async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -136,6 +138,7 @@ async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     logger.debug(f"Received callback: check_link, query: {query.data}")
     await query.answer()
+    context.user_data.clear()  # Reset state
     await query.message.reply_text("🔗 Please provide a URL to check (e.g., http://192.168.8.20:80/login):")
     return CHECK_LINK
 
@@ -464,6 +467,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Check bot status."""
+    context.user_data.clear()  # Reset state for flexibility
     await update.message.reply_text("✅ Bot is online! Use /start or /hack to scan.")
 
 async def keep_alive():
@@ -501,24 +505,33 @@ def main() -> None:
         logger.info("Initializing bot...")
         application = Application.builder().token(TOKEN).build()
 
+        # ConversationHandler for scanning flow
         conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("start", start), CommandHandler("hack", hack)],
+            entry_points=[
+                CallbackQueryHandler(start_hack_callback, pattern="^start_hack$"),
+                CallbackQueryHandler(special_scan_callback, pattern="^special_scan$"),
+                CallbackQueryHandler(check_link_callback, pattern="^check_link$"),
+            ],
             states={
-                IP: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, ip),
-                    CallbackQueryHandler(start_hack_callback, pattern="^start_hack$"),
-                    CallbackQueryHandler(special_scan_callback, pattern="^special_scan$"),
-                    CallbackQueryHandler(check_link_callback, pattern="^check_link$"),
-                    CallbackQueryHandler(help_callback, pattern="^help$"),
-                ],
+                IP: [MessageHandler(filters.TEXT & ~filters.COMMAND, ip)],
                 PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, port)],
                 CHECK_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_link)],
             },
-            fallbacks=[CommandHandler("cancel", cancel)],
+            fallbacks=[
+                CommandHandler("cancel", cancel),
+                CommandHandler("start", start),
+                CommandHandler("hack", hack),
+                CommandHandler("status", status),
+            ],
         )
 
-        application.add_handler(conv_handler)
+        # Global handlers for commands and callbacks
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("hack", hack))
         application.add_handler(CommandHandler("status", status))
+        application.add_handler(CommandHandler("cancel", cancel))
+        application.add_handler(CallbackQueryHandler(help_callback, pattern="^help$"))
+        application.add_handler(conv_handler)
 
         import threading
         keep_alive_loop = asyncio.new_event_loop()
