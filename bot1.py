@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Conversation states
 IP, PORT, CHECK_LINK = range(3)
 
-# Common CCTV credentials (for RTSP scanning)
+# Common widgets credentials (for RTSP scanning)
 CREDENTIALS = [
     ("admin", "admin"),
     ("admin", "12345"),
@@ -69,6 +69,7 @@ KEEP_ALIVE_PORT = int(os.getenv("KEEP_ALIVE_PORT", 8080))
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start or restart the conversation."""
     context.user_data.clear()  # Reset user data for fresh start
+    logger.debug("Starting /start command")
     keyboard = [
         [InlineKeyboardButton("🔍 Start Scan", callback_data="start_hack"), InlineKeyboardButton("🔗 Check Link", callback_data="check_link")],
         [InlineKeyboardButton("ℹ️ Help", callback_data="help")],
@@ -86,6 +87,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def hack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Provide advanced scan options."""
     context.user_data.clear()  # Reset user data for fresh start
+    logger.debug("Starting /hack command")
     keyboard = [
         [InlineKeyboardButton("🔎 Deep Path Scan", callback_data="special_scan"), InlineKeyboardButton("🔗 Check Link", callback_data="check_link")],
         [InlineKeyboardButton("🔍 Standard Scan", callback_data="start_hack")],
@@ -106,6 +108,7 @@ async def hack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def start_hack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle Standard Scan."""
     query = update.callback_query
+    logger.debug(f"Received callback: start_hack, query: {query.data}")
     await query.answer()
     await query.message.reply_text("📡 Enter IP address (e.g., 192.168.1.1):")
     context.user_data["scan_type"] = "standard"
@@ -114,6 +117,7 @@ async def start_hack_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def special_scan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle Deep Path Scan."""
     query = update.callback_query
+    logger.debug(f"Received callback: special_scan, query: {query.data}")
     await query.answer()
     await query.message.reply_text("📡 Enter IP for deep path scan (100+ paths):")
     context.user_data["scan_type"] = "special"
@@ -122,9 +126,28 @@ async def special_scan_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def check_link_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle Check Link button."""
     query = update.callback_query
+    logger.debug(f"Received callback: check_link, query: {query.data}")
     await query.answer()
     await query.message.reply_text("🔗 Please provide a URL to check (e.g., http://192.168.8.20:80/login):")
     return CHECK_LINK
+
+async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Help."""
+    query = update.callback_query
+    logger.debug(f"Received callback: help, query: {query.data}")
+    await query.answer()
+    await query.message.reply_text(
+        "📚 **CCTV Scanner Bot - Help**\n"
+        "1. **/start**: Start scanning or check a URL\n"
+        "2. **/hack**: Advanced scanning options\n"
+        "3. **Check Link**: Scan a specific URL\n"
+        "4. **Standard Scan**: Scans 20 paths or RTSP\n"
+        "5. **Deep Path Scan**: Scans 100+ paths\n"
+        "6. **/cancel**: Stop current operation\n"
+        "7. **/status**: Check bot status\n"
+        "⚠️ **Use ethically and legally!**",
+        parse_mode="Markdown"
+    )
 
 async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Check if a URL is an admin panel."""
@@ -177,23 +200,6 @@ async def check_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         logger.error(f"URL check error: {e}")
         await update.message.reply_text(f"❌ Error: {str(e)}")
         return CHECK_LINK
-
-async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle Help."""
-    query = update.callback_query
-    await query.answer()
-    await query.message.reply_text(
-        "📚 **CCTV Scanner Bot - Help**\n"
-        "1. **/start**: Start scanning or check a URL\n"
-        "2. **/hack**: Advanced scanning options\n"
-        "3. **Check Link**: Scan a specific URL\n"
-        "4. **Standard Scan**: Scans 20 paths or RTSP\n"
-        "5. **Deep Path Scan**: Scans 100+ paths\n"
-        "6. **/cancel**: Stop current operation\n"
-        "7. **/status**: Check bot status\n"
-        "⚠️ **Use ethically and legally!**",
-        parse_mode="Markdown"
-    )
 
 async def check_admin_panel(url: str) -> tuple[bool, list]:
     """Check if a URL is an admin panel."""
@@ -258,33 +264,39 @@ async def port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     admin_pages = []
     inline_buttons = []
 
-    for port in ports_to_scan:
-        port_results, port_admin_pages = await hack_cctv(ip, port, scan_type, update, context)
-        results.append(port_results)
-        admin_pages.extend(port_admin_pages)
-
-        for admin_url in port_admin_pages:
-            inline_buttons.append([
-                InlineKeyboardButton(f"🌐 Visit {admin_url.split('/')[-1] or 'root'}", url=admin_url)
-            ])
-
-    reply_markup = InlineKeyboardMarkup(inline_buttons)
-    results_text = "\n\n".join(results)
-    await update.message.reply_text(results_text, reply_markup=reply_markup, parse_mode="Markdown")
-
-    if admin_pages:
-        await update.message.reply_text(
-            "✅ **Admin Pages Found**:\n" + "\n".join([f"- {url}" for url in admin_pages]),
-            parse_mode="Markdown"
-        )
-
     try:
-        group_message = f"Results for {ip}\n\n{results_text}"
+        for port in ports_to_scan:
+            port_results, port_admin_pages = await hack_cctv(ip, port, scan_type, update, context)
+            results.append(port_results)
+            admin_pages.extend(port_admin_pages)
+
+            for admin_url in port_admin_pages:
+                inline_buttons.append([
+                    InlineKeyboardButton(f"🌐 Visit {admin_url.split('/')[-1] or 'root'}", url=admin_url)
+                ])
+
+        reply_markup = InlineKeyboardMarkup(inline_buttons)
+        results_text = "\n\n".join(results)
+        await update.message.reply_text(results_text, reply_markup=reply_markup, parse_mode="Markdown")
+
         if admin_pages:
-            group_message += "\n✅ **Admin Pages**:\n" + "\n".join([f"- {url}" for url in admin_pages])
-        await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=group_message, parse_mode="Markdown")
+            await update.message.reply_text(
+                "✅ **Admin Pages Found**:\n" + "\n".join([f"- {url}" for url in admin_pages]),
+                parse_mode="Markdown"
+            )
+
+        try:
+            group_message = f"Results for {ip}\n\n{results_text}"
+            if admin_pages:
+                group_message += "\n✅ **Admin Pages**:\n" + "\n".join([f"- {url}" for url in admin_pages])
+            await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=group_message, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Group send error: {e}")
+
     except Exception as e:
-        logger.error(f"Group send error: {e}")
+        logger.error(f"Scan error: {e}")
+        await update.message.reply_text(f"❌ Scan failed: {str(e)}")
+        return ConversationHandler.END
 
     context.user_data["admin_pages"] = admin_pages
     return ConversationHandler.END
@@ -294,103 +306,109 @@ async def hack_cctv(ip: str, port: int, scan_type: str, update: Update, context:
     results = [f"📡 Scanning {ip}:{port} ({scan_type})..."]
     admin_pages = []
     open_paths = []
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(5)  # Reduced to 5 for Koyeb stability
 
-    if not await check_port(ip, port):
-        results.append("❌ Port closed.")
+    try:
+        if not await check_port(ip, port):
+            results.append("❌ Port closed.")
+            return "\n".join(results), admin_pages
+
+        results.append(f"✅ Port {port} open!")
+        service = "http" if port in [80, 443, 8080, 8443] else "rtsp"
+        results.append(f"Service: {service}")
+
+        async def check_path(protocol: str, path: str) -> tuple[bool, str, list]:
+            async with semaphore:
+                url = f"{protocol}://{ip}:{port}{path}"
+                logger.debug(f"Checking path: {url}")
+                try:
+                    async with ClientSession(timeout=ClientTimeout(total=3)) as session:
+                        async with session.get(url, ssl=False, allow_redirects=True) as response:
+                            status = response.status
+                            html = await response.text()
+                            is_admin, details = await check_admin_panel(url)
+                            return is_admin, url, details
+                except Exception as e:
+                    return False, url, [f"Error: {str(e)}"]
+
+        if service == "http" and scan_type in ["standard", "special"]:
+            protocols = ["http", "https"] if port in [443, 8443] else ["http"]
+            paths_to_check = ADMIN_PATHS if scan_type == "special" else ADMIN_PATHS[:20]
+            total_paths = len(paths_to_check) * len(protocols)
+            checked_paths = 0
+
+            # Initialize progress message and button
+            progress_message = await update.message.reply_text("🔄 Starting scan...")
+            progress_button = await update.message.reply_text(
+                "Progress: 0%",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Progress: 0%", callback_data="progress_dummy")
+                ]])
+            )
+
+            tasks = [check_path(protocol, path) for protocol in protocols for path in paths_to_check]
+            for i in range(0, len(tasks), 5):  # Process in batches of 5
+                batch = tasks[i:i+5]
+                responses = await asyncio.gather(*batch, return_exceptions=True)
+                for is_admin, url, details in responses:
+                    checked_paths += 1
+                    if is_admin:
+                        admin_pages.append(url)
+                        results.append(f"✅ **Admin Page** 🎯: {url} ({', '.join(details)})")
+                    else:
+                        results.append(f"✅ Path: {url} (No admin)")
+                    open_paths.append(url.split("/")[-1])
+
+                    # Update progress every 5 paths
+                    if checked_paths % 5 == 0 or checked_paths == total_paths:
+                        progress = (checked_paths / total_paths) * 100
+                        try:
+                            await context.bot.edit_message_text(
+                                chat_id=progress_message.chat_id,
+                                message_id=progress_message.message_id,
+                                text=f"🔄 Scanning: {checked_paths}/{total_paths} paths"
+                            )
+                            await context.bot.edit_message_reply_markup(
+                                chat_id=progress_button.chat_id,
+                                message_id=progress_button.message_id,
+                                reply_markup=InlineKeyboardMarkup([[
+                                    InlineKeyboardButton(f"Progress: {progress:.0f}%", callback_data="progress_dummy")
+                                ]])
+                            )
+                        except Exception as e:
+                            logger.error(f"Progress update error: {e}")
+
+            # Finalize progress
+            await context.bot.edit_message_text(
+                chat_id=progress_message.chat_id,
+                message_id=progress_message.message_id,
+                text=f"✅ Scan complete: {checked_paths}/{total_paths} paths"
+            )
+            await context.bot.edit_message_reply_markup(
+                chat_id=progress_button.chat_id,
+                message_id=progress_button.message_id,
+                reply_markup=None
+            )
+
+            results.append(f"Paths Checked: {len(open_paths)}/{total_paths}")
+
+        if service == "rtsp" and scan_type == "standard":
+            for username, password in CREDENTIALS:
+                rtsp_url = f"rtsp://{username}:{password}@{ip}:{port}/live"
+                is_valid, error = await validate_rtsp(ip, port, username, password)
+                if is_valid:
+                    admin_pages.append(rtsp_url)
+                    results.append(f"✅ RTSP Success: {username}:{password}")
+                else:
+                    results.append(f"❌ RTSP Failed: {error}")
+
+        results.append("⚠️ Use ethically and legally.")
         return "\n".join(results), admin_pages
 
-    results.append(f"✅ Port {port} open!")
-    service = "http" if port in [80, 443, 8080, 8443] else "rtsp"
-    results.append(f"Service: {service}")
-
-    async def check_path(protocol: str, path: str) -> tuple[bool, str, list]:
-        async with semaphore:
-            url = f"{protocol}://{ip}:{port}{path}"
-            logger.debug(f"Checking path: {url}")
-            try:
-                async with ClientSession(timeout=ClientTimeout(total=3)) as session:
-                    async with session.get(url, ssl=False, allow_redirects=True) as response:
-                        status = response.status
-                        html = await response.text()
-                        is_admin, details = await check_admin_panel(url)
-                        return is_admin, url, details
-            except Exception as e:
-                return False, url, [f"Error: {str(e)}"]
-
-    if service == "http" and scan_type in ["standard", "special"]:
-        protocols = ["http", "https"] if port in [443, 8443] else ["http"]
-        paths_to_check = ADMIN_PATHS if scan_type == "special" else ADMIN_PATHS[:20]
-        total_paths = len(paths_to_check) * len(protocols)
-        checked_paths = 0
-
-        # Initialize progress message and button
-        progress_message = await update.message.reply_text("🔄 Starting scan...")
-        progress_button = await update.message.reply_text(
-            "Progress: 0%",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("Progress: 0%", callback_data="progress_dummy")
-            ]])
-        )
-
-        tasks = [check_path(protocol, path) for protocol in protocols for path in paths_to_check]
-        for i in range(0, len(tasks), 10):  # Process in batches of 10
-            batch = tasks[i:i+10]
-            responses = await asyncio.gather(*batch, return_exceptions=True)
-            for is_admin, url, details in responses:
-                checked_paths += 1
-                if is_admin:
-                    admin_pages.append(url)
-                    results.append(f"✅ **Admin Page** 🎯: {url} ({', '.join(details)})")
-                else:
-                    results.append(f"✅ Path: {url} (No admin)")
-                open_paths.append(url.split("/")[-1])
-
-                # Update progress every 10 paths
-                if checked_paths % 10 == 0 or checked_paths == total_paths:
-                    progress = (checked_paths / total_paths) * 100
-                    try:
-                        await context.bot.edit_message_text(
-                            chat_id=progress_message.chat_id,
-                            message_id=progress_message.message_id,
-                            text=f"🔄 Scanning: {checked_paths}/{total_paths} paths"
-                        )
-                        await context.bot.edit_message_reply_markup(
-                            chat_id=progress_button.chat_id,
-                            message_id=progress_button.message_id,
-                            reply_markup=InlineKeyboardMarkup([[
-                                InlineKeyboardButton(f"Progress: {progress:.0f}%", callback_data="progress_dummy")
-                            ]])
-                        )
-                    except Exception as e:
-                        logger.error(f"Progress update error: {e}")
-
-        # Finalize progress
-        await context.bot.edit_message_text(
-            chat_id=progress_message.chat_id,
-            message_id=progress_message.message_id,
-            text=f"✅ Scan complete: {checked_paths}/{total_paths} paths"
-        )
-        await context.bot.edit_message_reply_markup(
-            chat_id=progress_button.chat_id,
-            message_id=progress_button.message_id,
-            reply_markup=None
-        )
-
-        results.append(f"Paths Checked: {len(open_paths)}/{total_paths}")
-
-    if service == "rtsp" and scan_type == "standard":
-        for username, password in CREDENTIALS:
-            rtsp_url = f"rtsp://{username}:{password}@{ip}:{port}/live"
-            is_valid, error = await validate_rtsp(ip, port, username, password)
-            if is_valid:
-                admin_pages.append(rtsp_url)
-                results.append(f"✅ RTSP Success: {username}:{password}")
-            else:
-                results.append(f"❌ RTSP Failed: {error}")
-
-    results.append("⚠️ Use ethically and legally.")
-    return "\n".join(results), admin_pages
+    except Exception as e:
+        logger.error(f"hack_cctv error: {e}")
+        results.append(f"❌ Scan failed: {str(e)}")
+        return "\n".join(results), admin_pages
 
 async def check_port(ip: str, port: int) -> bool:
     """Check if port is open."""
@@ -438,53 +456,65 @@ async def keep_alive():
     """Keep-alive server for Koyeb."""
     import http.server
     import socketserver
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def do_GET(self):
-            if self.path == "/health":
-                self.send_response(200)
-                self.send_header("Content-type", "text/plain")
-                self.end_headers()
-                self.wfile.write(b"OK")
-            else:
-                self.send_response(404)
-                self.end_headers()
-    server = socketserver.TCPServer(("", KEEP_ALIVE_PORT), Handler)
-    logger.info(f"Keep-alive on port {KEEP_ALIVE_PORT}")
-    server.serve_forever()
+    try:
+        class Handler(http.server.SimpleHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/health":
+                    self.send_response(200)
+                    self.send_header("Content-type", "text/plain")
+                    self.end_headers()
+                    self.wfile.write(b"OK")
+                else:
+                    self.send_response(404)
+                    self.end_headers()
+        server = socketserver.TCPServer(("", KEEP_ALIVE_PORT), Handler)
+        logger.info(f"Keep-alive server started on port {KEEP_ALIVE_PORT}")
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Keep-alive error: {e}")
 
 def run_keep_alive(loop):
     """Run keep_alive in a separate event loop."""
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(keep_alive())
+    try:
+        loop.run_until_complete(keep_alive())
+    except Exception as e:
+        logger.error(f"run_keep_alive error: {e}")
 
 def main() -> None:
     """Run the bot."""
-    application = Application.builder().token(TOKEN).build()
+    try:
+        logger.info("Initializing bot...")
+        application = Application.builder().token(TOKEN).build()
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start), CommandHandler("hack", hack)],
-        states={
-            IP: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, ip),
-                CallbackQueryHandler(start_hack_callback, pattern="^start_hack$"),
-                CallbackQueryHandler(special_scan_callback, pattern="^special_scan$"),
-                CallbackQueryHandler(check_link_callback, pattern="^check_link$"),
-                CallbackQueryHandler(help_callback, pattern="^help$"),
-            ],
-            PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, port)],
-            CHECK_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_link)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("start", start), CommandHandler("hack", hack)],
+            states={
+                IP: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, ip),
+                    CallbackQueryHandler(start_hack_callback, pattern="^start_hack$"),
+                    CallbackQueryHandler(special_scan_callback, pattern="^special_scan$"),
+                    CallbackQueryHandler(check_link_callback, pattern="^check_link$"),
+                    CallbackQueryHandler(help_callback, pattern="^help$"),
+                ],
+                PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, port)],
+                CHECK_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_link)],
+            },
+            fallbacks=[CommandHandler("cancel", cancel)],
+        )
 
-    application.add_handler(conv_handler)
-    application.add_handler(CommandHandler("status", status))
+        application.add_handler(conv_handler)
+        application.add_handler(CommandHandler("status", status))
 
-    import threading
-    keep_alive_loop = asyncio.new_event_loop()
-    threading.Thread(target=run_keep_alive, args=(keep_alive_loop,), daemon=True).start()
+        import threading
+        keep_alive_loop = asyncio.new_event_loop()
+        threading.Thread(target=run_keep_alive, args=(keep_alive_loop,), daemon=True).start()
 
-    application.run_polling()
+        logger.info("Starting bot polling...")
+        application.run_polling()
+    except Exception as e:
+        logger.error(f"Main loop error: {e}")
+        raise
 
 if __name__ == "__main__":
     main()
