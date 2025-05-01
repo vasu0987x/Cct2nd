@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Conversation states
 IP, PORT, CHECK_LINK = range(3)
 
-# Common widgets credentials (for RTSP scanning)
+# Common CCTV credentials (for RTSP scanning)
 CREDENTIALS = [
     ("admin", "admin"),
     ("admin", "12345"),
@@ -42,7 +42,7 @@ CREDENTIALS = [
     ("user", "12345"),
 ]
 
-# Expanded admin paths (100+ paths)
+# Expanded admin paths (150+ paths)
 ADMIN_PATHS = [
     "/login", "/admin", "/signin", "/", "/dashboard", "/control", "/wp-admin", "/login.php", "/admin/login", "/panel",
     "/default.html", "/index.html", "/home", "/config", "/adminpanel", "/login.asp", "/sysadmin", "/webadmin", "/backend",
@@ -55,7 +55,15 @@ ADMIN_PATHS = [
     "/about", "/version", "/license", "/admin/settings", "/admin/config", "/admin/users", "/admin/logs", "/admin/status",
     "/admin/network", "/admin/security", "/admin/update", "/admin/backup", "/admin/restart", "/admin/reset", "/admin/control",
     "/admin/view", "/admin/stream", "/admin/camera", "/admin/video", "/admin/snapshot", "/admin/record", "/admin/playback",
-    "/admin/api", "/admin/rest", "/admin/json", "/admin/xml", "/admin/info"
+    "/admin/api", "/admin/rest", "/admin/json", "/admin/xml", "/admin/info",
+    "/stream1", "/cam1", "/video1", "/mjpeg1", "/liveview", "/live1", "/snapshot1", "/playback1", "/record1", "/view1",
+    "/admin-portal", "/control-room", "/sys-panel", "/web-console", "/manage", "/portal", "/interface", "/analytics",
+    "/admin/dashboard", "/admin/monitor", "/admin/surveillance", "/admin/webcam", "/admin/ipcam", "/admin/cctv",
+    "/login.aspx", "/admin.aspx", "/panel.jsp", "/login.jsp", "/admin.cfm", "/login.js", "/admin.js",
+    "/sys-config", "/net-config", "/device-config", "/user-config", "/guest-config", "/auth-config",
+    "/stream2", "/cam2", "/video2", "/mjpeg2", "/live2", "/snapshot2", "/playback2", "/record2", "/view2",
+    "/admin-panel", "/web-panel", "/control-center", "/security-panel", "/system-console", "/network-panel",
+    "/api/v1", "/rest/v1", "/json/v1", "/xml/v1", "/data/v1", "/info/v1"
 ]
 
 # Common ports
@@ -96,7 +104,7 @@ async def hack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         "🔥 **Advanced Scanning Options** 🔥\n"
-        "- *Deep Path Scan*: Scans 100+ admin/CCTV paths\n"
+        "- *Deep Path Scan*: Scans 150+ admin/CCTV paths\n"
         "- *Standard Scan*: Scans 20 paths or RTSP\n"
         "- *Check Link*: Verify a specific URL\n"
         "Choose an option:",
@@ -119,7 +127,7 @@ async def special_scan_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     logger.debug(f"Received callback: special_scan, query: {query.data}")
     await query.answer()
-    await query.message.reply_text("📡 Enter IP for deep path scan (100+ paths):")
+    await query.message.reply_text("📡 Enter IP for deep path scan (150+ paths):")
     context.user_data["scan_type"] = "special"
     return IP
 
@@ -142,7 +150,7 @@ async def help_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "2. **/hack**: Advanced scanning options\n"
         "3. **Check Link**: Scan a specific URL\n"
         "4. **Standard Scan**: Scans 20 paths or RTSP\n"
-        "5. **Deep Path Scan**: Scans 100+ paths\n"
+        "5. **Deep Path Scan**: Scans 150+ paths\n"
         "6. **/cancel**: Stop current operation\n"
         "7. **/status**: Check bot status\n"
         "⚠️ **Use ethically and legally!**",
@@ -281,14 +289,21 @@ async def port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
         if admin_pages:
             await update.message.reply_text(
-                "✅ **Admin Pages Found**:\n" + "\n".join([f"- {url}" for url in admin_pages]),
+                "✅ **Live Admin Pages**:\n" + "\n".join([f"- {url}" for url in admin_pages]),
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                "❌ No live admin pages found.",
                 parse_mode="Markdown"
             )
 
         try:
             group_message = f"Results for {ip}\n\n{results_text}"
             if admin_pages:
-                group_message += "\n✅ **Admin Pages**:\n" + "\n".join([f"- {url}" for url in admin_pages])
+                group_message += "\n✅ **Live Admin Pages**:\n" + "\n".join([f"- {url}" for url in admin_pages])
+            else:
+                group_message += "\n❌ No live admin pages found."
             await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=group_message, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Group send error: {e}")
@@ -302,11 +317,11 @@ async def port(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 async def hack_cctv(ip: str, port: int, scan_type: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[str, list]:
-    """Perform CCTV scan with progress indicator."""
+    """Perform CCTV scan with progress indicator, show only live paths."""
     results = [f"📡 Scanning {ip}:{port} ({scan_type})..."]
     admin_pages = []
     open_paths = []
-    semaphore = asyncio.Semaphore(5)  # Reduced to 5 for Koyeb stability
+    semaphore = asyncio.Semaphore(5)  # Optimized for Koyeb
 
     try:
         if not await check_port(ip, port):
@@ -352,11 +367,9 @@ async def hack_cctv(ip: str, port: int, scan_type: str, update: Update, context:
                 responses = await asyncio.gather(*batch, return_exceptions=True)
                 for is_admin, url, details in responses:
                     checked_paths += 1
-                    if is_admin:
+                    if is_admin:  # Only include live admin paths
                         admin_pages.append(url)
-                        results.append(f"✅ **Admin Page** 🎯: {url} ({', '.join(details)})")
-                    else:
-                        results.append(f"✅ Path: {url} (No admin)")
+                        results.append(f"✅ **Live Path** 🎯: {url} ({', '.join(details)})")
                     open_paths.append(url.split("/")[-1])
 
                     # Update progress every 5 paths
@@ -396,12 +409,13 @@ async def hack_cctv(ip: str, port: int, scan_type: str, update: Update, context:
             for username, password in CREDENTIALS:
                 rtsp_url = f"rtsp://{username}:{password}@{ip}:{port}/live"
                 is_valid, error = await validate_rtsp(ip, port, username, password)
-                if is_valid:
+                if is_valid:  # Only include successful RTSP paths
                     admin_pages.append(rtsp_url)
-                    results.append(f"✅ RTSP Success: {username}:{password}")
-                else:
-                    results.append(f"❌ RTSP Failed: {error}")
+                    results.append(f"✅ **Live RTSP** 🎯: {username}:{password}")
+                # Skip failed RTSP paths
 
+        if not admin_pages:
+            results.append("❌ No live paths found.")
         results.append("⚠️ Use ethically and legally.")
         return "\n".join(results), admin_pages
 
